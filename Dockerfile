@@ -23,7 +23,5 @@ COPY --from=builder /build/main /main
 # Copy CA certificates (allows HTTPS calls).
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
-EXPOSE 9001
-
 # Entrypoint.
 ENTRYPOINT ["/main"]
