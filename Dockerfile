@@ -1,4 +1,4 @@
-FROM golang:1.14-alpine as builder
+FROM golang:1.15-alpine as builder
 
 # Fetch certs to allow use of TLS.
 RUN apk add -U --no-cache ca-certificates git

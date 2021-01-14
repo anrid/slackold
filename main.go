@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"regexp"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	"github.com/slack-go/slack"
+	"github.com/spf13/pflag"
 )
 
 func main() {
@@ -32,33 +32,33 @@ func main() {
 	// mpim:read - View basic information about a user’s group direct messages
 	// users:read - View people in a workspace
 	//
-	token := flag.String("token", "", "Slack token")
+	token := pflag.String("token", "", "Slack token")
 
 	// Your Slack username.
-	me := flag.String("me", "", "My Slack username")
+	me := pflag.String("me", "", "My Slack username")
 
 	// Filter channels, multi-party and direct message channels using this pattern.
-	filter := flag.String("filter", "", "Filter channels, multi-party and direct message channels using this pattern, e.g. 'ace,base' becomes regexp /(ace|base)/i")
+	filter := pflag.String("filter", "", "Filter channels, multi-party and direct message channels using this pattern, e.g. 'ace,base' becomes regexp /(ace|base)/i")
 
 	// Delete message before the given date.
-	before := flag.String("before", "", "Delete messages before this date (format: YYYYMMDD)")
+	before := pflag.String("before", "", "Delete messages before this date (format: YYYYMMDD)")
 
-	commit := flag.Bool("commit", false, "Perform the actual delete operation")
+	commit := pflag.Bool("commit", false, "Perform the actual delete operation")
 
-	flag.Parse()
+	pflag.Parse()
 
 	var myUserID string
 
-	// Try loading token from env var if no -token flag was passed.
+	// Try loading token from env var if no --token flag was passed.
 	if *token == "" {
 		*token = os.Getenv("MY_SLACK_TOKEN")
 		if *token == "" {
-			panic("env MY_SLACK_TOKEN missing and -token flag empty")
+			panic("env MY_SLACK_TOKEN missing and --token flag empty")
 		}
 	}
 
 	if *me == "" {
-		panic("-me flag missing")
+		panic("--me flag missing")
 	}
 	fmt.Printf("Me: %s\n", *me)
 
@@ -185,7 +185,7 @@ func main() {
 	fmt.Printf("\nFound %d messages to delete!\n\n", len(toDelete))
 
 	if !*commit {
-		fmt.Printf("Run command again with -commit flag to perform the delete operation!\n\n")
+		fmt.Printf("Run command again with --commit flag to perform the delete operation!\n\n")
 		os.Exit(0)
 	}
 
