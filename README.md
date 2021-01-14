@@ -33,7 +33,7 @@ Delete your old Slack messages and files from a workspace.
 #
 # NOTE: It's a dry-run, nothing is actually deleted unless you also pass the --commit flag.
 #
-docker run --rm anrid/slackold --me massamun --filter teammate1,coworker2 --before 20200501 --token oxop-xxx
+docker run --rm anrid/slackold --me massamun --filter teammate1,coworker2 --before 20200501 --token xoxp-...
 ```
 
 # Build
