@@ -13,7 +13,7 @@ import (
 )
 
 func main() {
-	// Slack OAuth Access Token beginning with `oxop-`.
+	// Slack OAuth Access Token beginning with `xoxp-`.
 	// To get a token you'll need to create a new Slack app and add
 	// it to your workspace:
 	// https://api.slack.com/apps
@@ -69,14 +69,19 @@ func main() {
 		fmt.Printf("Filter pattern: %s\n", pattern.String())
 	}
 
-	// Convert -before time string to a Slack timestamp.
+	// Convert --before time string (YYYYMMDD format) to a Slack timestamp.
 	var beforeTS string
+	var beforeTSUnix slack.JSONTime
+
 	if *before != "" {
 		t, err := time.Parse("20060102", *before)
 		if err != nil {
 			panic(err)
 		}
+
 		beforeTS = toSlackTimestamp(t)
+		beforeTSUnix = slack.JSONTime(t.Unix())
+
 		fmt.Printf("Before: %s Slack TS: %s (sanity check: %s)\n", t.String(), beforeTS, fromSlackTimestamp(beforeTS))
 	}
 
@@ -109,46 +114,91 @@ func main() {
 		fmt.Printf("Found myself: ID: %s, Name: %s\n", myUserID, users[myUserID])
 	}
 
+	// Fetch files.
+	var filesToDelete []slack.File
+	{
+		var found int
+
+		p := &slack.ListFilesParameters{
+			User: myUserID,
+		}
+
+		for {
+			var res []slack.File
+			var err error
+
+			res, p, err = api.ListFiles(*p)
+			if err != nil {
+				panic(err)
+			}
+
+			for _, f := range res {
+				if f.Created < beforeTSUnix {
+					found++
+					fmt.Printf("%03d. Found file: %s (created: %s)\n", found, f.Name, f.Created.Time().String())
+					filesToDelete = append(filesToDelete, f)
+				}
+			}
+
+			if p.Cursor == "" {
+				break
+			}
+
+			fmt.Printf("Next cursor: %s (files: %d)\n", p.Cursor, len(filesToDelete))
+		}
+
+		fmt.Printf("Found %d files.\n", len(filesToDelete))
+	}
+
 	// Fetch channels.
 	var channels []slack.Channel
-	var cursor string
+	{
+		var found int
+		var cursor string
 
-	for {
-		res, next, err := api.GetConversations(&slack.GetConversationsParameters{
-			Types:  []string{"private_channel", "mpim", "im"},
-			Cursor: cursor,
-		})
-		if err != nil {
-			panic(err)
-		}
+		for {
+			res, next, err := api.GetConversations(&slack.GetConversationsParameters{
+				Types:  []string{"private_channel", "mpim", "im"},
+				Cursor: cursor,
+			})
+			if err != nil {
+				panic(err)
+			}
 
-		for i, c := range res {
-			if c.IsPrivate || c.IsMpIM {
-				if pattern.MatchString(c.Name) {
-					fmt.Printf("%03d. CH ID: %s, Name: %s\n", i+1, c.ID, c.Name)
-					channels = append(channels, c)
+			for _, c := range res {
+				if c.IsPrivate || c.IsMpIM {
+					if pattern.MatchString(c.Name) {
+						found++
+						fmt.Printf("%03d. CH ID: %s, Name: %s\n", found, c.ID, c.Name)
+						channels = append(channels, c)
+					}
+				}
+				if c.IsIM {
+					username := users[c.User]
+					if pattern.MatchString(username) {
+						found++
+						fmt.Printf("%03d. IM ID: %s, Name: %s\n", found, c.ID, username)
+						channels = append(channels, c)
+					}
 				}
 			}
-			if c.IsIM {
-				username := users[c.User]
-				if pattern.MatchString(username) {
-					fmt.Printf("%03d. IM ID: %s, Name: %s\n", i+1, c.ID, username)
-					channels = append(channels, c)
-				}
+
+			if next == "" {
+				break
 			}
+
+			fmt.Printf("Next cursor: %s (channels: %d)\n", next, len(channels))
+			cursor = next
 		}
 
-		if next == "" {
-			break
-		}
-
-		fmt.Printf("Next cursor: %s (channels: %d)\n", next, len(channels))
-		cursor = next
+		fmt.Printf("Found %d channels.\n", len(channels))
 	}
 
 	// Fetch messages.
-	var toDelete []slack.Message
+	var messagesToDelete []slack.Message
 	{
+		var found int
+
 		for _, c := range channels {
 
 			var cursor string
@@ -161,14 +211,17 @@ func main() {
 					panic(err)
 				}
 
-				for i, m := range res.Messages {
+				for _, m := range res.Messages {
 					if m.User == myUserID {
 						if beforeTS != "" && m.Timestamp > beforeTS {
 							continue
 						}
-						fmt.Printf("%03d. MSG TS: %s, Text: %s\n", i+1, fromSlackTimestamp(m.Timestamp), m.Text)
+
+						found++
+						fmt.Printf("%03d. MSG TS: %s, Text: %s\n", found, fromSlackTimestamp(m.Timestamp), m.Text)
+
 						m.Channel = c.ID
-						toDelete = append(toDelete, m)
+						messagesToDelete = append(messagesToDelete, m)
 					}
 				}
 
@@ -182,7 +235,7 @@ func main() {
 		}
 	}
 
-	fmt.Printf("\nFound %d messages to delete!\n\n", len(toDelete))
+	fmt.Printf("\nFound %d messages and %d files to delete!\n\n", len(messagesToDelete), len(filesToDelete))
 
 	if !*commit {
 		fmt.Printf("Run command again with --commit flag to perform the delete operation!\n\n")
@@ -191,7 +244,7 @@ func main() {
 
 	// Delete messages.
 	{
-		for i, m := range toDelete {
+		for i, m := range messagesToDelete {
 			for {
 				ch, ts, err := api.DeleteMessage(m.Channel, m.Timestamp)
 				if err != nil {
@@ -199,8 +252,9 @@ func main() {
 						fmt.Printf("Delete failed: %s (message: ID: %s, Text: %s)\n", err.Error(), m.Timestamp, m.Text)
 						break
 					}
+
 					// We were rate limited, wait a sec and retry!
-					fmt.Printf("Rate limited, retrying in 1sec ..\n")
+					fmt.Printf("Rate limited, retrying in 1 sec ..\n")
 					time.Sleep(1000 * time.Millisecond)
 					continue
 				}
@@ -212,6 +266,33 @@ func main() {
 			time.Sleep(200 * time.Millisecond)
 		}
 	}
+
+	// Delete files.
+	{
+		for i, f := range filesToDelete {
+			for {
+				err := api.DeleteFile(f.ID)
+				if err != nil {
+					if !strings.Contains(err.Error(), "rate limit") {
+						fmt.Printf("Delete failed: %s (file: ID: %s, Name: %s)\n", err.Error(), f.ID, f.Name)
+						break
+					}
+
+					// We were rate limited, wait a sec and retry!
+					fmt.Printf("Rate limited, retrying in 1 sec ..\n")
+					time.Sleep(1000 * time.Millisecond)
+					continue
+				}
+
+				fmt.Printf("%03d. Deleted file: %s (created: %s)\n", i+1, f.Name, f.Created.Time().String())
+				break
+			}
+
+			time.Sleep(200 * time.Millisecond)
+		}
+	}
+
+	fmt.Printf("\nIt's a Done Deal!\n\n")
 }
 
 func fromSlackTimestamp(ts string) time.Time {
