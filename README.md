@@ -28,12 +28,17 @@ Delete your old Slack messages and files from a workspace.
 # Run
 
 ```bash
-# Delete messages posted by `massamun` before May 1, 2020, in any private, mpdm or dm channel
+# Delete messages and files posted by `massamun` before May 1, 2020, in all private, MpDM and DM channels
 # involving coworker2 or teammate1.
 #
 # NOTE: It's a dry-run, nothing is actually deleted unless you also pass the --commit flag.
 #
 docker run --rm anrid/slackold --me massamun --filter teammate1,coworker2 --before 20200501 --token xoxp-...
+
+# Delete messages and files posted by `massamun` before Jan 1, 2021, in all private, MpDM and DM channels
+# because 2020 kind of sucked!
+#
+docker run --rm anrid/slackold --me massamun --before 20210101 --token xoxp-...
 ```
 
 # Build
